@@ -1,6 +1,7 @@
 const { app, BrowserWindow } = require('electron/main')
 const path = require('node:path')
 const isDev = process.env.NODE_ENV == "development";
+const { nativeImage } = require('electron');
 
 function createWindow () {
   const win = new BrowserWindow({
@@ -12,6 +13,7 @@ function createWindow () {
   })
   
   win.setMenuBarVisibility(false);
+  win.setIcon(nativeImage.createFromPath(path.join(__dirname,'../public/logo.ico')), 'Airi');
 
   if(isDev){
     win.loadURL("http://localhost:3000/");
