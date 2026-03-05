@@ -35,7 +35,7 @@ export function NavUser({
               <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
             }>
             <Avatar>
-              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarImage src={user.picture} alt={user.name} />
               <AvatarFallback>CN</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
@@ -53,7 +53,7 @@ export function NavUser({
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar>
-                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarImage src={user.picture} alt={user.name} />
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
@@ -86,7 +86,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.location.href = "/auth/logout"}>
               <SignOutIcon />
               Log out
             </DropdownMenuItem>

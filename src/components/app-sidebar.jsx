@@ -15,23 +15,6 @@ import {
 
 // This is sample data.
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "https://github.com/shadcn.png",
-  },
-  teams: [
-    {
-      name: "Airi",
-      logo: (
-        <Avatar>
-          <AvatarImage src="/logo.ico" />
-          <AvatarFallback>airi_logo</AvatarFallback>
-        </Avatar>
-      ),
-      plan: "Enterprise",
-    }
-  ],
   navSecondary: [
     {
       title: "Support",
@@ -78,6 +61,7 @@ const data = {
 }
 
 export function AppSidebar({
+  User,
   ...props
 }) {
   return (
@@ -96,7 +80,7 @@ export function AppSidebar({
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={User} />
       </SidebarFooter>
     </Sidebar>
   );
