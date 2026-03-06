@@ -30,7 +30,7 @@ export function LoginForm({
             <h1 className="text-xl font-bold">Welcome to Airi.</h1>
           </div>
           <Field className="grid gap-6">
-            <Button variant="outline" type="button" onClick={() => window.location.href = "/auth/login?screen_hint=signup"}>
+            <Button variant="outline" type="button" onClick={() => window.location.href = "/auth/login"}>
               <img src="https://raw.githubusercontent.com/varshney-ansh/slew/refs/heads/main/public/favicons/android-chrome-512x512.png" alt="slew_logo" width="24px" height="24px" />
               Register with Slew
             </Button>

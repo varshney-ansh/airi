@@ -36,6 +36,11 @@ cd airi
 npm install
 ```
 
+```bash
+winget install llama.cpp
+llama-server -hf Qwen/Qwen3-VL-2B-Thinking-GGUF:Q4_K_M
+```
+
 ### 3. Run Development Server
 
 ```bash
