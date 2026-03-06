@@ -14,7 +14,9 @@ function startLlama() {
     "--batch-size", "128",
     "--ubatch-size", "64",
     "--n-gpu-layers", "0",
-    "--port", "11434"
+    "--port", "11434",
+    "--cache-type-k", "q8_0",
+    "--cache-type-v", "q8_0",
   ])
 
   llamaProcess.stdout.on("data", (data) => {
