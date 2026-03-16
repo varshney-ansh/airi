@@ -5,3 +5,4 @@ Appium-Python-Client
 pyperclip
 pyautogui
 Pillow
+pyppeteer

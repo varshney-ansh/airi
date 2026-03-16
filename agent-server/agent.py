@@ -10,7 +10,8 @@ app = BedrockAgentCoreApp()
 
 # 1. Define multiple MCP server URLs
 MCP_SERVER_URLS = [
-    "http://localhost:11441/mcp/"
+    "http://127.0.0.1:11441/mcp/",
+    "http://127.0.0.1:11442/mcp/"
 ]
 
 def create_transport_factory(url):

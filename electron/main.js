@@ -30,6 +30,43 @@ function startLlama() {
   })
 }
 
+function startAgentServer() {
+  // Use path.join to ensure this works on Windows, Mac, and Linux
+  const scriptPath = path.join(__dirname, '../agent-server', 'agent.py');
+  agentProcess = spawn("python", [scriptPath]);
+  
+  agentProcess.on("error", (err) => {
+    console.error(`[Agent-Server FAILED TO START] Is python installed?`, err);
+  });
+
+  agentProcess.stdout.on("data", (data) => console.log(`[Agent-Server] ${data}`));
+  agentProcess.stderr.on("data", (data) => console.error(`[Agent-Server ERROR] ${data}`));
+}
+
+function startControlMCPServer() {
+  const scriptPath = path.join(__dirname, '../agent-server', 'control-mcp', 'server.py');
+  controlMcpProcess = spawn("python", [scriptPath]);
+  
+  controlMcpProcess.on("error", (err) => {
+    console.error(`[CONTROL-MCP FAILED TO START]`, err);
+  });
+
+  controlMcpProcess.stdout.on("data", (data) => console.log(`[CONTROL-MCP] ${data}`));
+  controlMcpProcess.stderr.on("data", (data) => console.error(`[CONTROL-MCP ERROR] ${data}`));
+}
+
+function startBrowserSearchMCPServer() {
+  const scriptPath = path.join(__dirname, '../agent-server', 'browser-search-mcp', 'server.py');
+  browserSearchMcpProcess = spawn("python", [scriptPath]);
+  
+  browserSearchMcpProcess.on("error", (err) => {
+    console.error(`[BROWSER-SEARCH-MCP FAILED TO START]`, err);
+  });
+
+  browserSearchMcpProcess.stdout.on("data", (data) => console.log(`[BROWSER-SEARCH-MCP] ${data}`));
+  browserSearchMcpProcess.stderr.on("data", (data) => console.error(`[BROWSER-SEARCH-MCP ERROR] ${data}`));
+}
+
 function createWindow () {
   const win = new BrowserWindow({
     width: 800,
@@ -54,14 +91,28 @@ function createWindow () {
 }
 
 app.whenReady().then(() => {
+  startAgentServer();
+  startControlMCPServer();
+  startBrowserSearchMCPServer();
+
   startLlama()   // start inference server
   createWindow()
 })
 
 app.on('before-quit', () => {
-  if (llamaProcess) {
-    llamaProcess.kill()
-  }
+  // Safely terminate all spawned processes to prevent zombies
+  const processes = [
+    llamaProcess, 
+    agentProcess, 
+    controlMcpProcess, 
+    browserSearchMcpProcess
+  ];
+  
+  processes.forEach(proc => {
+    if (proc && !proc.killed) {
+      proc.kill();
+    }
+  });
 })
 
 app.on('window-all-closed', () => {
