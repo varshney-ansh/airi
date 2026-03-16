@@ -2,7 +2,7 @@
 import { random } from 'nanoid';
 import { useState, useRef, useEffect } from 'react';
 
-export default function ChatInput({ showgreet, message, setMessage, handleOnSubmit }) {
+export default function ChatInput({ showgreet, message, setMessage, handleOnSubmit, user_name }) {
 
     const [files, setFiles] = useState([]);
     const textareaRef = useRef(null);
@@ -48,7 +48,7 @@ export default function ChatInput({ showgreet, message, setMessage, handleOnSubm
             {/* Greeting Section */}
             {showgreet && (
                 <div className="flex text-[#e5ebfa] font-semibold w-full flex-col items-start justify-start sm:justify-end sm:mb-8 sm:h-25 text-2xl sm:ps-2">
-                    <h2 className="text-[28px]">Hi Ansh, what should we dive into today?</h2>
+                    <h2 className="text-[28px]">Hi {user_name}, what should we dive into today?</h2>
                 </div>
             )}
 

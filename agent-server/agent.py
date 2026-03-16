@@ -4,11 +4,17 @@ from strands_tools import calculator
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from mcp.client.streamable_http import streamablehttp_client
 from strands.tools.mcp import MCPClient
+from contextlib import ExitStack
 
 app = BedrockAgentCoreApp()
 
-def create_streamable_http_transport():
-   return streamablehttp_client("http://localhost:8000/mcp/") # <-- Just update the URL to match your MCP server's address and port
+# 1. Define multiple MCP server URLs
+MCP_SERVER_URLS = [
+    "http://localhost:11441/mcp/"
+]
+
+def create_transport_factory(url):
+    return lambda: streamablehttp_client(url)
 
 model = LlamaCppModel(
     base_url="http://127.0.0.1:11434",
@@ -42,16 +48,17 @@ Communication:
 
 # Initialize agent globally
 agent = None
-streamable_http_mcp_client = MCPClient(create_streamable_http_transport)
+# Create the list of clients
+mcp_clients = [MCPClient(create_transport_factory(url)) for url in MCP_SERVER_URLS]
+mcp_tools = []
 
-def initialize_agent(mcp_client):
+def initialize_agent():
     """Initialize Agent with MCP and built-in tools using Managed Integration"""
     global agent
     try:
-        tools = streamable_http_mcp_client.list_tools_sync()
         agent = Agent(
             model=model, 
-            tools=[calculator, *tools], 
+            tools=[calculator] + mcp_tools, 
             system_prompt=SYSTEM_PROMPT
         )
         print("Agent initialized successfully with calculator and Windows MCP tools.")
@@ -61,14 +68,21 @@ def initialize_agent(mcp_client):
 @app.entrypoint
 async def invoke(payload):
     """Handler for agent invocation"""
-    with streamable_http_mcp_client:
+    with ExitStack() as stack:
+        for client in mcp_clients:
+            stack.enter_context(client)
         try:
             global agent
-            
             # Initialize agent on first request
             if agent is None:
                 print("Initializing agent on first request...")
-                initialize_agent(streamable_http_mcp_client)
+                for client in mcp_clients:
+                    try:
+                        # Fetch tools while contexts are safely open
+                        mcp_tools.extend(client.list_tools_sync())
+                    except Exception as client_err:
+                        print(f"Failed to fetch tools from a client: {client_err}")
+                initialize_agent()
                 
             print(f"Processing request with payload: {payload}")
             input_text = payload.get("prompt")

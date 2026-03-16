@@ -1,10 +1,9 @@
 "use client"
 import ChatInput from "@/component/chatInput/chatInput";
 import { useCallback, useState } from "react";
-import { callAgentAPI } from "@/lib/agent-api"; // Adjust path
-import { toast } from "sonner"; // Assuming sonner based on your code style
+import { callAgentAPI } from "@/lib/agent-api"; 
 
-const ChatMain = ({ userId = 'anshvar', chatId = 'test' }) => {
+const ChatMain = ({ userId, chatId='test', user_name }) => {
     const [messages, setMessages] = useState([]);
     const [status, setStatus] = useState("ready");
     const [streamingMessageId, setStreamingMessageId] = useState(null);
@@ -174,7 +173,7 @@ const ChatMain = ({ userId = 'anshvar', chatId = 'test' }) => {
 
                 {/* 2. INPUT AREA */}
                 <div className="w-full pb-6 pt-2">
-                    <ChatInput showgreet={messages.length === 0} message={message} setMessage={setMessage} handleOnSubmit={handleOnSubmit} />
+                    <ChatInput user_name={user_name} showgreet={messages.length === 0} message={message} setMessage={setMessage} handleOnSubmit={handleOnSubmit} />
                 </div>
             </div>
         </main >
