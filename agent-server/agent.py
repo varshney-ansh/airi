@@ -5,6 +5,8 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from mcp.client.streamable_http import streamablehttp_client
 from strands.tools.mcp import MCPClient
 from contextlib import ExitStack
+import os
+os.environ["OTEL_SDK_DISABLED"] = "true"
 
 app = BedrockAgentCoreApp()
 
@@ -20,31 +22,25 @@ def create_transport_factory(url):
 model = LlamaCppModel(
     base_url="http://127.0.0.1:11434",
     model_id="default",
+    timeout=120.0,
     params={
-        "repeat_penalty": 1.2,
-        "temperature": 0.6,
+        "repeat_penalty": 1.0,
+        "temperature": 0.2,
         "stream": True
     }
 )
 
 SYSTEM_PROMPT = """
-Identity: You are Airi, an autonomous desktop AI assistant created by the Slew team — Ansh Varshney, Anjali Yadav, Aditya Singh, Harsh Prajapati.
+You are Airi, a desktop AI assistant created by the Slew team (Ansh, Anjali, Aditya, Harsh). Your objective is to execute local PC tasks safely and accurately.
 
-Objective: Reason, plan, and execute multi-step local computer tasks efficiently to assist the user.
+# CORE DIRECTIVES
+1. **TOOLS ARE MANDATORY:** You cannot interact with the PC without tools. NEVER hallucinate, guess, or simulate tool outputs.
+2. **ONE AT A TIME:** Call exactly ONE tool per response. You MUST stop generating and wait for the system observation before proceeding.
+3. **SAFETY PROTOCOL:** Ask for explicit user confirmation before any destructive action (e.g., deleting files, shutting down). Do not expose sensitive system data.
+4. **COMMUNICATION:** Be exceptionally concise. Output the final result immediately. If a task fails, briefly state why and provide one alternative.
 
-Tool Rules:
-- Always use tools for PC interactions; never simulate tool execution.
-- Call only one tool at a time and wait for the system response before continuing.
-- Workflow: Understand intent → select tool → execute → analyze result → respond.
-
-Safety:
-- Require explicit user confirmation before destructive actions (e.g., deleting files, shutting down).
-- Do not expose sensitive system data unnecessarily.
-
-Communication:
-- Be clear, concise, and structured.
-- If successful, return the final answer clearly.
-- If a task fails or is impossible, briefly explain the limitation and suggest an alternative.
+# EXECUTION LOOP
+Analyze Intent → Select Tool → Execute → Wait for Result → Provide Final Answer.
 """
 
 # Initialize agent globally
@@ -102,16 +98,28 @@ async def invoke(payload):
                 # Use stream_async or stream depending on library version
                 if hasattr(agent, 'stream_async'):
                     stream = agent.stream_async(input_text)
-                    async for event in stream:
-                        print(f"Event: {event}")
-                        yield event
+                    try:
+                        async for event in stream:
+                            print(f"Event: {event}")
+                            yield event
+                    finally:
+                        # Ensures proper OpenTelemetry cleanup if generator exits early
+                        await stream.aclose()
+                        
                 elif hasattr(agent, 'stream'):
-                    for event in agent.stream(input_text):
-                        print(f"Event: {event}")
-                        yield event
+                    stream = agent.stream(input_text)
+                    try:
+                        for event in stream:
+                            print(f"Event: {event}")
+                            yield event
+                    finally:
+                        # Ensures proper OpenTelemetry cleanup if generator exits early
+                        stream.close()
+                        
                 else:
                     result = await agent.invoke(input_text) if hasattr(agent.invoke, '__call__') else agent(input_text)
                     yield {"response": result}
+                    
             except Exception as stream_error:
                 print(f"Error during streaming: {stream_error}")
                 yield {"error": f"Failed to process prompt: {str(stream_error)}"}

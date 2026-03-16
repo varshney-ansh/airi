@@ -38,7 +38,7 @@ npm install
 
 ```bash
 winget install llama.cpp
-llama-server -hf Qwen/Qwen3-VL-2B-Instruct-GGUF:Q4_K_M
+llama-server -hf LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 ```
 
 #### create virtual environment for python
