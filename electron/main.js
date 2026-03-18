@@ -8,7 +8,7 @@ let llamaProcess
 // uvx windows-mcp --transport streamable-http --host localhost --port 11433
 function startLlama() {
   llamaProcess = spawn("llama-server", [
-    "-hf", "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+    "-hf", "Qwen/Qwen3-VL-2B-Instruct-GGUF:Q4_K_M",
     "--ctx-size", "32768",
     "--threads", "4",         // Keep this equal to your physical CPU cores
     // "--batch-size", "512",    // Increased from 128: Processes the system prompt much faster
