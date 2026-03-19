@@ -38,11 +38,11 @@ llm_cfg = {
     }
 }
 
-# --- 2. CONTROL TOOLS (Formerly 11441) ---
+# --- 2. CONTROL TOOLS ---
 
 @register_tool('run_cmd')
 class RunCmd(BaseTool):
-    description = "Execute a shell command and return output. Avoid destructive commands."
+    description = "Execute a shell command and return output."
     parameters = [{'name': 'command', 'type': 'string', 'required': True}]
 
     def call(self, params: str, **kwargs) -> str:
@@ -55,13 +55,17 @@ class RunCmd(BaseTool):
 
 @register_tool('take_screenshot')
 class TakeScreenshot(BaseTool):
-    description = "Capture desktop screenshot to ../../media/screenshots/screenshot.png"
+    description = "Capture screenshot and save it locally."
     parameters = []
 
     def call(self, params: str, **kwargs) -> str:
         try:
-            os.makedirs("../../media/screenshots", exist_ok=True)
-            path = "../../media/screenshots/screenshot.png"
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            save_dir = os.path.join(script_dir, "screenshots")
+            os.makedirs(save_dir, exist_ok=True)
+            from datetime import datetime
+            filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            path = os.path.join(save_dir, filename)
             pyautogui.screenshot().save(path)
             return f"Screenshot saved to {path}"
         except Exception as e:
@@ -92,9 +96,14 @@ class TypeText(BaseTool):
     parameters = [{'name': 'text', 'type': 'string', 'required': True}]
 
     def call(self, params: str, **kwargs) -> str:
-        txt = _parse(params)['text']
-        pyautogui.write(txt, interval=0.03)
-        return f"Typed: {txt}"
+        try:
+            txt = _parse(params)['text']
+            # Use clipboard paste — handles unicode and is faster than pyautogui.write
+            pyperclip.copy(txt)
+            pyautogui.hotkey('ctrl', 'v')
+            return f"Typed: {txt}"
+        except Exception as e:
+            return str(e)
 
 @register_tool('clipboard_manager')
 class ClipboardManager(BaseTool):
@@ -111,7 +120,7 @@ class ClipboardManager(BaseTool):
             return "Copied to clipboard."
         return pyperclip.paste()
 
-# --- 3. BROWSER TOOLS (Formerly 11442) ---
+# --- 3. BROWSER TOOLS ---
 
 @register_tool('browser_search')
 class BrowserSearch(BaseTool):
@@ -119,7 +128,12 @@ class BrowserSearch(BaseTool):
     parameters = [{'name': 'queries', 'type': 'array', 'items': {'type': 'string'}, 'required': True}]
 
     def call(self, params: str, **kwargs) -> str:
-        queries = _parse(params)['queries']
+        parsed = _parse(params)
+        # Qwen may pass the array directly or wrapped in {"queries": [...]}
+        if isinstance(parsed, list):
+            queries = parsed
+        else:
+            queries = parsed['queries']
         
         with sync_playwright() as p:
             # 1. Launch with a real-looking User Agent
