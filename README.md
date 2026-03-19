@@ -1,326 +1,147 @@
-# 🤖 Airi - AI Desktop Agent
+# Airi — AI Desktop Agent
 
-**Airi** is an advanced AI Desktop Agent that seamlessly automates your PC to handle repetitive tasks, office work, and complex workflows. Control your computer through intuitive voice and text commands with a highly customizable and personalized AI agent optimized for fast performance on decent laptops.
+Airi is an AI-powered desktop agent that lets you control your PC through natural language. It runs locally using a quantized LLM via llama.cpp, with a Next.js + Electron frontend and a Python FastAPI agent backend.
 
-## ✨ Features
+---
 
-- **Voice & Text Commands**: Control your PC using natural language via voice or text input
-- **Task Automation**: Automate repetitive office tasks and workflows automatically
-- **AI-Powered Agent**: Advanced AI agent with computer use capabilities
-- **Customizable & Personalized**: Tailor the agent to your specific workflow and preferences
-- **Desktop Integration**: Built with Electron for seamless desktop application experience
-- **Fast Performance**: Optimized to run efficiently on standard laptops
-- **Modern UI**: Beautiful, responsive interface built with React and Tailwind CSS
-- **Real-time Streaming**: Leverages AI SDK for real-time response streaming
+## Features
 
-## 📋 Prerequisites
+- Text chat interface with real-time streaming responses
+- Desktop automation — mouse control, keyboard input, clipboard management
+- Browser search via Playwright (Google scraping)
+- Screenshot capture
+- Shell command execution
+- Runs fully local — no cloud API required
 
-Before getting started, ensure you have the following installed:
+## Tech Stack
 
-- **Node.js** (v18.0.0 or higher) - [Download](https://nodejs.org/)
-- **npm** (v9.0.0 or higher) - Usually comes with Node.js
-- **Git** - [Download](https://git-scm.com/)
+| Layer | Tech |
+|---|---|
+| Desktop shell | Electron |
+| Frontend | Next.js 16, React 19, Tailwind CSS |
+| UI components | ShadCN, Radix UI, Lucide |
+| Markdown rendering | Streamdown |
+| Agent backend | Python, FastAPI, Qwen-Agent |
+| LLM inference | llama.cpp (`llama-server`) |
+| Browser automation | Playwright |
+| Auth | Auth0 |
 
-## 🚀 Quick Start
+---
 
-### 1. Clone the Repository
+## Prerequisites
+
+- Node.js v18+
+- Python 3.10+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) (`winget install llama.cpp` on Windows)
+- Git
+
+---
+
+## Setup
+
+### 1. Clone
 
 ```bash
 git clone https://github.com/varshney-ansh/airi.git
 cd airi
 ```
 
-### 2. Install Dependencies
+### 2. Install JS dependencies
 
 ```bash
 npm install
 ```
 
-```bash
-winget install llama.cpp
-llama-server -hf LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
-```
+### 3. Install Python dependencies
 
-#### create virtual environment for python
-```bash 
+```bash
 python -m venv .venv
-.venv/Scripts/activate.bat
+.venv/Scripts/activate.bat       # Windows
+# source .venv/bin/activate       # macOS/Linux
+
 pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 3. Run Development Server
+### 4. Start the LLM server
+
+```bash
+llama-server -hf Qwen/Qwen3-0.6B-GGUF:Q8_0 --port 11434 --ctx-size 32768 --jinja
+```
+
+> You can swap the model for any OpenAI-compatible GGUF. The agent backend points to `http://127.0.0.1:11434/v1`.
+
+### 5. Run in development
 
 ```bash
 .venv/Scripts/activate.bat
 npm run dev
 ```
 
-This will start both the Next.js dev server and Electron application concurrently. The application will open automatically on `http://localhost:3000`.
-
-### 4. Build for Production
-
-```bash
-npm run build
-npm start
-```
-
-## 📁 Project Structure
-
-```
-airi/
-├── electron/                 # Electron main process configuration
-│   ├── main.js              # Electron main entry point
-│   └── preload.js           # Preload scripts for IPC
-├── agent-server/            # Includes agent backend server files
-├── src/
-│   ├── app/                 # Next.js app directory
-│   │   ├── globals.css      # Global styles
-│   │   ├── layout.js        # Root layout component
-│   │   └── page.jsx         # Home page
-│   ├── components/          # React components
-│   │   ├── ai-elements/     # AI-specific UI components
-│   │   ├── ui/              # Reusable UI components
-│   │   └── nav-*.jsx        # Navigation components
-│   ├── hooks/               # Custom React hooks
-│   └── lib/                 # Utility functions
-├── public/                  # Static assets
-├── package.json             # Project dependencies
-├── next.config.mjs          # Next.js configuration
-├── tailwind.config.js       # Tailwind CSS configuration
-└── jsconfig.json            # JavaScript configuration
-```
-
-## 🛠️ Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server with Electron |
-| `npm run dev:next` | Start only Next.js dev server |
-| `npm run dev:electron` | Start only Electron app |
-| `npm run build` | Build Next.js for production |
-| `npm start` | Start production Next.js server |
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to contribute to Airi:
-
-### Fork the Repository
-
-1. Go to [Airi GitHub Repository](https://github.com/varshney-ansh/airi)
-2. Click the **Fork** button in the top-right corner
-3. This creates a copy of the repository under your GitHub account
-
-```bash
-# Fork is done via GitHub UI, then clone your fork:
-git clone https://github.com/YOUR-USERNAME/airi.git
-cd airi
-```
-
-### Create a Feature Branch
-
-```bash
-# Create and switch to a new branch
-git checkout -b feature/your-feature-name
-
-# Or use the shorthand
-git switch -c feature/your-feature-name
-```
-
-**Branch naming convention:**
-- `feature/description` - for new features
-- `bugfix/description` - for bug fixes
-- `docs/description` - for documentation updates
-- `refactor/description` - for code refactoring
-
-### Make Your Changes
-
-1. Edit the relevant files in the project
-2. Test your changes locally:
-   ```bash
-   npm run dev
-   ```
-3. Ensure your code follows the project style guidelines
-
-### Commit Your Changes
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/) for clear commit history:
-
-```bash
-# Stage your changes
-git add .
-
-# Commit with a descriptive message
-git commit -m "feat: add new AI component for task automation"
-
-# Or stage and commit specific files
-git add src/components/my-component.jsx
-git commit -m "feat(components): add speech input handler"
-```
-
-**Conventional Commits Format:**
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-**Types:**
-- `feat:` - A new feature
-- `fix:` - A bug fix
-- `docs:` - Documentation only changes
-- `style:` - Code style changes (formatting, missing semicolons, etc.)
-- `refactor:` - Code refactoring without adding features or fixing bugs
-- `perf:` - Performance improvements
-- `test:` - Adding or updating tests
-- `chore:` - Build process, dependencies, or tooling changes
-- `ci:` - CI/CD configuration changes
-
-**Examples:**
-```bash
-# Simple commit
-git commit -m "feat: add voice command support"
-
-# With scope
-git commit -m "fix(ui): resolve button alignment issue"
-
-# With body and footer
-git commit -m "feat(agent): implement task automation
-
-- Add task scheduling
-- Implement retry logic
-- Add error handling
-
-Closes #123"
-```
-
-### Push to Your Fork
-
-```bash
-# Push your branch to your fork
-git push origin feature/your-feature-name
-
-# For first push with a new branch:
-git push -u origin feature/your-feature-name
-```
-
-### Create a Pull Request
-
-1. Go to [Airi Repository](https://github.com/varshney-ansh/airi)
-2. Click the **Compare & pull request** button (appears after you push)
-3. Or go to **Pull Requests** tab → **New Pull Request**
-4. Select your branch and click **Create Pull Request**
-5. Fill in the PR template with:
-   - **Title**: Brief description of changes
-   - **Description**: Detailed explanation of what changed and why
-   - **Related Issues**: Link any related issues (e.g., `Fixes #123`)
-   - **Testing**: Explain how you tested the changes
-
-### Pull Request Template
-
-```markdown
-## Description
-Brief description of the changes made.
-
-## Type of Change
-- [ ] New feature
-- [ ] Bug fix
-- [ ] Documentation update
-- [ ] Code refactoring
-
-## Changes Made
-- Change 1
-- Change 2
-- Change 3
-
-## Testing Done
-Explain what you tested and how.
-
-## Screenshots/Videos (if applicable)
-Add any relevant screenshots or videos.
-
-## Checklist
-- [ ] My code follows the project's style guidelines
-- [ ] I have performed a self-review of my own code
-- [ ] I have tested my changes locally
-- [ ] My changes don't break existing functionality
-```
-
-### Review Process
-
-1. A maintainer will review your PR
-2. You may receive feedback or change requests
-3. Make requested changes and push them to the same branch
-4. Once approved, your PR will be merged!
-
-## 🔄 Keep Your Fork Updated
-
-As the main repository receives updates, keep your fork in sync:
-
-```bash
-# Add the original repository as upstream
-git remote add upstream https://github.com/varshney-ansh/airi.git
-
-# Fetch updates from upstream
-git fetch upstream
-
-# Merge upstream changes into your main branch
-git checkout main
-git merge upstream/main
-
-# Push to your fork
-git push origin main
-```
-
-## 📚 Technology Stack
-
-- **Frontend**: React 19, Next.js 16
-- **Desktop**: Electron
-- **Styling**: Tailwind CSS, CSS Modules
-- **AI Integration**: Vercel AI SDK
-- **UI Components**: Radix UI, Lucide Icons, ShadCn UI
-- **Code Highlighting**: Shiki
-- **Node Graph**: XYFlow
-- **Animations**: Framer Motion
-
-## 🐛 Reporting Issues
-
-Found a bug? Want to suggest a feature? Please open an issue:
-
-1. Go to **Issues** tab
-2. Click **New Issue**
-3. Choose a template (Bug Report or Feature Request)
-4. Fill in the details
-5. Submit!
-
-## 📝 Code Style Guidelines
-
-- Follow existing code style and patterns in the project
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Keep components small and reusable
-- Write tests for new features when applicable
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Next.js](https://nextjs.org)
-- Desktop app powered by [Electron](https://www.electronjs.org)
-- AI capabilities from [Vercel AI SDK](https://sdk.vercel.ai)
-- UI components from [Radix UI, ShadCn](https://www.radix-ui.com, https://ui.shadcn.com/)
-- Icons from [Lucide](https://lucide.dev)
-
-## ❓ Need Help?
-
-- 📖 Check existing [Issues](https://github.com/varshney-ansh/airi/issues)
-- 💬 Start a [Discussion](https://github.com/varshney-ansh/airi/discussions)
-- 📧 Contact the maintainers
+This starts the Next.js dev server and Electron concurrently. The app opens at `http://localhost:3000`.
 
 ---
 
-**Happy contributing! Together, we're building the future of desktop automation.** 🚀
+## Project Structure
+
+```
+airi/
+├── agent-server/
+│   ├── agent.py              # FastAPI server + Qwen agent + all tools
+│   └── screenshots/          # Screenshot output directory (auto-created)
+├── electron/
+│   ├── main.js               # Electron entry — spawns llama-server + agent.py
+│   └── preload.js
+├── src/
+│   ├── app/
+│   │   ├── api/agent/        # Next.js API route — proxies to agent backend
+│   │   ├── layout.js
+│   │   └── page.jsx
+│   ├── component/            # App-specific components (chat, sidebar)
+│   └── lib/
+│       ├── agent-api.js      # Streaming NDJSON client
+│       └── auth0.js
+├── requirements.txt
+└── package.json
+```
+
+---
+
+## Available Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start Next.js + Electron together |
+| `npm run dev:next` | Next.js only |
+| `npm run dev:electron` | Electron only (requires Next.js running) |
+| `npm run build` | Production build |
+
+---
+
+## Agent Tools
+
+The agent (`agent-server/agent.py`) exposes these tools to the LLM:
+
+| Tool | Description |
+|---|---|
+| `run_cmd` | Execute shell commands |
+| `take_screenshot` | Capture desktop screenshot (saved to `agent-server/screenshots/`) |
+| `mouse_control` | Move, click, or double-click at screen coordinates |
+| `type_text` | Type text into the focused window via clipboard paste |
+| `clipboard_manager` | Read or write system clipboard |
+| `browser_search` | Search Google and return result snippets |
+
+---
+
+## Contributing
+
+1. Fork the repo and create a branch: `git checkout -b feature/your-feature`
+2. Make your changes and test locally with `npm run dev`
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `git commit -m "feat: add X"`
+4. Push and open a Pull Request against `main`
+
+---
+
+## License
+
+MIT
