@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-app: #f3f4f6;
+    --bg-modal: #ffffff;
+    --bg-card: #f9fafb;
+    --bg-hover: #e5e7eb;
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted: #6b7280;
+    --border-default: #e5e7eb;
+    --border-active: #3b82f6;
+    --border-error: #ef4444;
+    --accent-blue: #2563eb;
+    --accent-red: #dc2626;
+  }
+
+  .dark {
+    --bg-app: #0f111a;
+    --bg-modal: #1c1f2e;
+    --bg-card: #131522;
+    --bg-hover: #2a2d3e;
+    --text-primary: #f3f4f6;
+    --text-secondary: #d1d5db;
+    --text-muted: #9ca3af;
+    --border-default: #2d3142;
+    --border-active: #3b82f6;
+    --border-error: #e06c75;
+    --accent-blue: #3b82f6;
+    --accent-red: #e06c75;
+  }
+}
+
+@theme {
+  --color-bg-app: var(--bg-app);
+  --color-bg-modal: var(--bg-modal);
+  --color-bg-card: var(--bg-card);
+  --color-bg-hover: var(--bg-hover);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-border-default: var(--border-default);
+  --color-border-active: var(--border-active);
+  --color-border-error: var(--border-error);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-red: var(--accent-red);
+}
+
+body {
+  @apply bg-bg-app text-text-primary transition-colors duration-200;
+}
+
+/* Firefox */
+.lean-slider {
+  scrollbar-width: thin; /* or auto/none */
+  scrollbar-color: var(--accent-blue) var(--bg-card);
+}
+
+/* Chrome, Safari, Edge */
+.lean-slider::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.lean-slider::-webkit-scrollbar-track {
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+
+.lean-slider::-webkit-scrollbar-thumb {
+  background-color: var(--accent-blue);
+  border-radius: 8px;
+  border: 2px solid var(--bg-card);
+}
+
+.lean-slider::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-red);
+}
