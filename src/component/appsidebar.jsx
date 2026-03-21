@@ -1,19 +1,11 @@
 "use client"
 
+import { clsx } from "clsx";
 import ChatItem from "./chatItem/chatItem";
 
 const AppSideBar = ({ session, profilePicBase64 }) => {
     return (
-        <div className="
-            fixed inset-y-0 left-0 z-50 bg-[#0e111b] 
-            transition-transform duration-300 ease-in-out
-            data-[state=close]:-translate-x-full data-[state=open]:translate-x-0
-            w-[256px] 
-            
-            md:relative md:data-[state=close]:translate-x-0 md:transition-all
-            md:data-[state=open]:w-[256px] md:data-[state=close]:w-13
-            h-screen overflow-hidden group
-            " data-state="open" id="sidebar">
+        <div className={clsx("fixed inset-y-0 left-0 z-50 bg-[#0e111b]", "transition-transform duration-300 ease-in-out", "data-[state=close]:-translate-x-full data-[state=open]:translate-x-0", "w-[256px]", "md:relative md:data-[state=close]:translate-x-0 md:transition-all", "md:data-[state=open]:w-[256px] md:data-[state=close]:w-13", "h-screen overflow-hidden group")} data-state="open" id="sidebar">
             <div className="w-full max-w-[256px] px-1 pb-0.5 pt-4 select-none">
                 <div className="flex justify-between items-center group-data-[state=close]:flex-col group-data-[state=close]:gap-2 group-data-[state=close]:items-start">
                     <h1 className="font-semibold text-[#e5ebfa] text-[18px] outline-offset-1 pl-2.5">Airi</h1>

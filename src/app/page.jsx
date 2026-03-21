@@ -12,7 +12,7 @@ const UserDashboard = async() => {
     if(!session){
         redirect('/login')
     }
-
+    
     return (
         <div className="h-screen bg-[#0e111b] flex">
             <AppSideBar session={session} profilePicBase64={profilePicBase64} />
