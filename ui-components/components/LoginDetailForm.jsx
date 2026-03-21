@@ -1,6 +1,9 @@
-import { ChevronDown } from "lucide-react";
+'use client'
 import { useState } from "react";
 import CustomOptions from "./common/CustomOptions";
+import { RegisterNewUser } from "@/lib/actions";
+import { useRouter } from "next/navigation";
+import "../index.css"
 
 const MONTHS = [
   "January",
@@ -38,12 +41,24 @@ const COUNTRIES = [
   "Brazil",
 ];
 
-function LoginDetailForm() {
+function LoginDetailForm({ session }) {
   const [error, setError] = useState("");
   const [month, setMonth] = useState(MONTHS[new Date().getMonth()]);
   const [day, setDay] = useState(new Date().getDate());
   const [year, setYear] = useState(new Date().getFullYear());
   const [country, setCountry] = useState("");
+  const router = useRouter();
+
+  const handleSubmit = async () => {
+    const dob = new Date(`${month} ${day}, ${year}`);
+    const result = await RegisterNewUser({ data: { email: session.user.email, name: session.user.name, profile_img: session.user.picture, user_id: session.user.sub, dob, country } });
+    if (result.success) {
+      router.push("/");
+    } else {
+      setError(result.message);
+    }
+  }
+
   return (
     <div className="w-full min-h-screen flex justify-center items-center">
       <div className="w-full max-w-lg flex flex-col items-center text-center p-8">
@@ -60,7 +75,7 @@ function LoginDetailForm() {
         {/* Birthdate */}
         <div className="w-full text-left mb-6">
           <label className="block text-sm font-medium mb-2">
-           BirthDate *
+           Birthdate *
           </label>
           <CustomOptions
             label="Month"
@@ -97,15 +112,12 @@ function LoginDetailForm() {
           <label className="block text-sm font-medium mb-2">
             Country / region *
           </label>
-          <div className="relative">
-            <select className="w-full appearance-none bg-bg-hover border border-border-default rounded-lg pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-border-active transition-colors">
-              <option>India</option>
-            </select>
-            <ChevronDown
-              size={16}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
-            />
-          </div>
+          <CustomOptions
+            label=""
+            options={COUNTRIES}
+            value={country}
+            onChange={setCountry}
+          />
         </div>
 
         <p className="text-xs text-text-muted mb-6">
@@ -120,7 +132,8 @@ function LoginDetailForm() {
           .
         </p>
 
-        <button className="w-full py-3 rounded-lg bg-bg-hover text-text-muted text-sm font-medium transition-colors">
+        <button onClick={handleSubmit} 
+        className="w-full cursor-pointer py-3 rounded-lg bg-bg-hover text-text-muted text-sm font-medium transition-colors">
           Continue
         </button>
       </div>

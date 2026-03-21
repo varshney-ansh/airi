@@ -1,11 +1,10 @@
 import os
 import json
-import asyncio
+import time
 import subprocess
 import pyautogui
 import pyperclip
 import urllib.parse
-from typing import List, Dict, Optional
 from playwright.sync_api import sync_playwright
 
 # Qwen Agent Framework
@@ -16,6 +15,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 import win
+
+modelName = "ibm-granite/granite-4.0-1b"
 
 def _parse(params):
     """Safely parse params: dict, JSON string, Python repr, or raw primitive."""
@@ -297,57 +298,41 @@ class StopAppSession(BaseTool):
             del ACTIVE_SESSIONS[app_id]
         return json.dumps({"app_id": app_id, "status": "closed" if success else "failed", "message": message})
 
-# --- 5. OPTIMIZED SYSTEM PROMPT FOR QWEN3-VL-2B-INSTRUCT ---
-# Key optimizations:
-# - Shorter, clearer instructions (2B models need concise prompts)
-# - Numbered workflow with explicit step labels
-# - Visual context hints for VL model
-# - One-tool-per-turn enforcement
-# - JSON output expectations for reliability
-# - Error recovery guidance
 
-SYSTEM_PROMPT = """
-You are Airi, a Windows automation agent powered by Qwen3-VL-2B.
+SYSTEM_PROMPT = """You are Airi, a Windows desktop automation agent.
+RULES:
+- Call ONE tool at a time. Wait for the result before proceeding.
+- Never pass an app name where app_id is required.
+- Never assume UI elements exist — always inspect first.
+- For shell tasks, prefer run_cmd over GUI automation when possible.
 
-🎯 CORE RULES:
-1. ONE tool call per response. Wait for tool result before next action.
-2. ALWAYS use AppId (not app name) for start_app_session.
-3. Return ONLY JSON for tool calls: {"tool": "name", "params": {...}}
-4. For visual tasks: describe what you "see" before acting.
+APP CONTROL WORKFLOW (follow in order):
+1. search_win_app_by_name(name) → get AppId
+2. start_app_session(app_id) → launch app
+3. inspect_ui_elements(app_id) → scan UI tree
+4. list_element_names(app_id) → see available elements
+5. get_element_details(app_id, element_name) → get coordinates
+6. mouse_control / type_text → interact
+7. stop_app_session(app_id) → always clean up when done
 
-🔄 WORKFLOW (Follow in order):
-[STEP 0] fetch_windows_apps → Update app database (run once if search fails)
-[STEP 1] search_app_id(name="...") → Get [{Name, AppId}]
-[STEP 2] start_app_session(app_id="Publisher.App!ID") → Launch app
-[STEP 3] inspect_ui_elements(app_id="...") → Capture UI tree
-[STEP 4] list_element_names(app_id="...") → Get clickable items
-[STEP 5] get_element_details(app_id="...", element_name="...") → Get coords
-[STEP 6] Use mouse_control/type_text to interact
-[FINAL] stop_app_session(app_id="...") → Cleanup
+TOOL REFERENCE:
+- run_cmd(command) — run any shell command, returns {stdout, stderr}
+- take_screenshot() — capture screen, returns file path
+- mouse_control(x, y, action, button) — move/click/double_click at coordinates
+- type_text(text) — paste text into focused element
+- clipboard_manager(mode, text) — read or write clipboard
+- browser_search(queries) — search DuckDuckGo, returns top 3 results per query
+- search_win_app_by_name(name) — find installed app AppId by name
+- start_app_session(app_id) — launch a Windows app by full AppId
+- inspect_ui_elements(app_id) — capture and save the app's UI element tree
+- list_element_names(app_id) — list clickable element names in the open app
+- get_element_details(app_id, element_name) — get position and ID of a named element
+- stop_app_session(app_id) — close app and end session
 
-📋 EXAMPLE:
-User: "Open Calculator"
-You: {"tool": "search_app_id", "params": {"name": "Calculator"}}
-[Tool returns: [{"Name":"Calculator","AppId":"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}]]
-You: {"tool": "start_app_session", "params": {"app_id": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}
-[After app starts]
-You: {"tool": "inspect_ui_elements", "params": {"app_id": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}
-...continue workflow...
-
-⚠️ ERROR HANDLING:
-- If tool fails: report error + suggest fix (e.g., "Run fetch_windows_apps first")
-- If element not found: use list_element_names to see available options
-- If app won't start: check AppId format (must include !App suffix)
-
-💡 VL MODEL TIPS:
-- When describing screenshots: focus on buttons, text fields, icons
-- For coordinates: assume 1920x1080 screen unless screenshot shows otherwise
-- Use take_screenshot when unsure about UI state
-
-🚫 NEVER:
-- Use app Name as app_id parameter
-- Call multiple tools in one response
-- Assume UI elements exist without inspecting first
+ERROR RECOVERY:
+- Element not found → call list_element_names to see what's available
+- App won't start → verify AppId includes the !App suffix
+- Search returns nothing → app may not be installed; try run_cmd to locate it
 """
 
 # --- 6. AGENT INITIALIZATION ---
@@ -364,36 +349,52 @@ airi = Assistant(
 )
 
 # --- 7. FASTAPI ENDPOINT (Streaming + Error Handling) ---
-@app.post("/invoke")
-async def invoke(request: Request):
+@app.post("/v1/chat/completions")
+async def chat_completions(request: Request):
     data = await request.json()
-    messages = [{"role": "user", "content": data.get("prompt", "")}]
+    messages = data.get("messages", [])
     
     def stream_gen():
-        try:
-            for response in airi.run(messages):
-                last = response[-1] if response else {}
-                if last.get("role") != "assistant":
-                    continue
-                content = last.get("content", "")
-                # Handle both string and list content formats
-                if isinstance(content, list):
-                    text = " ".join(c.get("text", "") for c in content if c.get("type") == "text")
-                else:
-                    text = str(content) if content else ""
-                if text.strip():
-                    yield json.dumps({"role": "assistant", "content": text.strip()}, ensure_ascii=False) + "\n"
-        except Exception as e:
-            yield json.dumps({"role": "assistant", "content": f"Error: {str(e)}"}, ensure_ascii=False) + "\n"
+        prev_content = ""
+        for response in airi.run(messages):
+            if not response: continue
+            # Find the last assistant message
+            assistant_msgs = [m for m in response if m.get("role") == "assistant"]
+            if not assistant_msgs: continue
+            last = assistant_msgs[-1]
 
-    return StreamingResponse(stream_gen(), media_type="application/x-ndjson")
+            full_content = last.get("content") or ""
+            if not isinstance(full_content, str): continue
+
+            delta = full_content[len(prev_content):]
+            prev_content = full_content
+
+            if not delta: continue
+
+            chunk = {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": modelName,
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": delta},
+                    "finish_reason": None
+                }]
+            }
+
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(stream_gen(), media_type="text/event-stream")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": "Qwen3-VL-2B-Instruct", "agent": "Airi"}
+    return {"status": "ok", "model": modelName, "agent": "Airi"}
 
 if __name__ == "__main__":
     import uvicorn
-    print("Airi Agent (Qwen3-VL-2B Optimized) running on http://127.0.0.1:11435")
-    print("Tips: Use /health to check status, /invoke for requests")
+    print("Airi Agent running on http://127.0.0.1:11435")
+    print("Tips: Use /health to check status, /v1/chat/completions for requests")
     uvicorn.run(app, host="127.0.0.1", port=11435, log_level="info")

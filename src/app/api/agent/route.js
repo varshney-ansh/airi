@@ -2,7 +2,7 @@ export async function POST(request) {
   try {
     const { prompt, userId, chatId } = await request.json();
 
-    const backendUrl = "http://localhost:11435/invoke";
+    const backendUrl = "http://localhost:11435/v1/chat/completions";
 
     const response = await fetch(backendUrl, {
       method: "POST",
@@ -10,9 +10,9 @@ export async function POST(request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt,
-        chatId,
-        userId,
+        model: "airi",
+        stream: true,
+        messages: [{ role: "user", content: prompt }],
       }),
     });
 

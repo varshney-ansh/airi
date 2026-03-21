@@ -1,4 +1,4 @@
-export function AccountTab() {
+export function AccountTab({email, name}) {
   return (
     <div className="max-w-2xl">
       <h3 className="text-lg font-semibold mb-6">Account</h3>
@@ -6,7 +6,11 @@ export function AccountTab() {
       <div className="bg-bg-card rounded-xl border border-border-default overflow-hidden">
         <div className="p-6 border-b border-border-default flex justify-between items-center">
           <span className="text-sm font-medium">Name</span>
-          <span className="text-sm text-text-muted uppercase">HARSH</span>
+          <span className="text-sm text-text-muted uppercase">{name}</span>
+        </div>
+        <div className="p-6 border-b border-border-default flex justify-between items-center">
+          <span className="text-sm font-medium">Email</span>
+          <span className="text-sm text-text-muted uppercase">{email}</span>
         </div>
         
         <div className="p-6">

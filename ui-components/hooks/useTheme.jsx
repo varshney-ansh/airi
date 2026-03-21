@@ -5,12 +5,10 @@ const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    // Initialize from localStorage or system preference
+    if (typeof window === "undefined") return "Night";
     const saved = localStorage.getItem("theme");
     if (saved) return saved;
-
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return prefersDark ? "Night" : "Day";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "Night" : "Day";
   });
 
   useEffect(() => {
