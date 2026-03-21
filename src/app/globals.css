@@ -20,7 +20,7 @@
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent; 
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #52525b; /* Zinc-600 */
@@ -31,11 +31,25 @@
 }
 
 :root {
-  --card: oklch(1 0 0);
+  /* Harsh's css  */
+  --bg-app: #f3f4f6;
+  --bg-modal: #ffffff;
+  --bg-card: #f9fafb;
+  --bg-hover: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --border-default: #e5e7eb;
+  --border-active: #3b82f6;
+  --border-error: #ef4444;
+  --accent-blue: #2563eb;
+  --accent-red: #dc2626;
+  /* Harsh's css  */
+  /* --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(48.78% 0.24331 264.421)298.79;
+  --primary: oklch(48.78% 0.24331 264.421) 298.79;
   --primary-foreground: oklch(0.97 0.014 254.604);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -62,11 +76,25 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.145 0 0); */
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  /* harsh's css  */
+  --bg-app: #0f111a;
+  --bg-modal: #1c1f2e;
+  --bg-card: #131522;
+  --bg-hover: #2a2d3e;
+  --text-primary: #f3f4f6;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --border-default: #2d3142;
+  --border-active: #3b82f6;
+  --border-error: #e06c75;
+  --accent-blue: #3b82f6;
+  --accent-red: #e06c75;
+  /* harsh's css  */
+  /* --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -96,10 +124,27 @@
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.556 0 0); */
 }
 
-@theme inline {
+/* harsh's css  */
+@theme {
+  --color-bg-app: var(--bg-app);
+  --color-bg-modal: var(--bg-modal);
+  --color-bg-card: var(--bg-card);
+  --color-bg-hover: var(--bg-hover);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-border-default: var(--border-default);
+  --color-border-active: var(--border-active);
+  --color-border-error: var(--border-error);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-red: var(--accent-red);
+}
+/* harsh's css  */
+
+/* @theme inline {
   --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -139,7 +184,7 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
-}
+} */
 
 /* 2. Position it relative to the button */
 #profilemenu {
@@ -153,9 +198,9 @@
 .chat-options-menu[popover] {
   top: anchor(bottom);
   left: anchor(right);
-  
+
   /* Translates the menu so its right edge lines up with the right edge of the button, plus a little spacing below */
-  translate: -100% 4px; 
+  translate: -100% 4px;
 }
 
 /* 3. Handle the sidebar 'close' state positioning */
@@ -169,3 +214,39 @@
 [popover] {
   inset: auto;
 }
+
+
+/* harsh's css  */
+
+body {
+  @apply bg-bg-app text-text-primary transition-colors duration-200;
+}
+
+/* Firefox */
+.lean-slider {
+  scrollbar-width: thin; /* or auto/none */
+  scrollbar-color: var(--accent-blue) var(--bg-card);
+}
+
+/* Chrome, Safari, Edge */
+.lean-slider::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.lean-slider::-webkit-scrollbar-track {
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+
+.lean-slider::-webkit-scrollbar-thumb {
+  background-color: var(--accent-blue);
+  border-radius: 8px;
+  border: 2px solid var(--bg-card);
+}
+
+.lean-slider::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-red);
+}
+
+/* harsh's css  */
