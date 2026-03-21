@@ -1,8 +1,7 @@
-strands-agents 
-strands-agents-tools
-bedrock_agentcore
 Appium-Python-Client
 pyperclip
 pyautogui
 Pillow
 playwright
+qwen-agent[gui,rag,code_interpreter,mcp]
+soundfile

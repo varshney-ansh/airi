@@ -10,6 +10,11 @@
 !.yarn/releases
 !.yarn/versions
 
+/agent-server/context/*
+/agent-server/screenshots/*
+/models/*
+/agent-server/__pycache__/*
+
 # testing
 /coverage
 

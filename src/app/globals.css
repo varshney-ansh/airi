@@ -214,39 +214,3 @@
 [popover] {
   inset: auto;
 }
-
-
-/* harsh's css  */
-
-body {
-  @apply bg-bg-app text-text-primary transition-colors duration-200;
-}
-
-/* Firefox */
-.lean-slider {
-  scrollbar-width: thin; /* or auto/none */
-  scrollbar-color: var(--accent-blue) var(--bg-card);
-}
-
-/* Chrome, Safari, Edge */
-.lean-slider::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.lean-slider::-webkit-scrollbar-track {
-  background: var(--bg-card);
-  border-radius: 8px;
-}
-
-.lean-slider::-webkit-scrollbar-thumb {
-  background-color: var(--accent-blue);
-  border-radius: 8px;
-  border: 2px solid var(--bg-card);
-}
-
-.lean-slider::-webkit-scrollbar-thumb:hover {
-  background-color: var(--accent-red);
-}
-
-/* harsh's css  */

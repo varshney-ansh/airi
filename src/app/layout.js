@@ -1,11 +1,12 @@
 import "./globals.css";
-import { AppSidebar } from "@/components/app-sidebar"
-import {
-  SidebarProvider,
-} from "@/components/ui/sidebar"
-import { LoginForm } from "@/components/login-form";
-
+import "../../ui-components/index.css";
+import { Google_Sans_Flex } from "next/font/google";
 import { auth0 } from "@/lib/auth0";
+import { ThemeProvider } from "../../ui-components/hooks/useTheme";
+
+const googleSansFlex = Google_Sans_Flex({
+  subsets: ['latin', 'latin-ext', 'cyrillic', 'greek'],
+})
 
 export const metadata = {
   title: "Airi | Ai Desktop Assistant Agent",
@@ -13,16 +14,15 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children }) {
-  // Check if user is authenticated
-  const session = await auth0.getSession();
-  // /auth/login?screen_hint=signup
   return (
     <html lang="en">
       <link rel="icon" href="/logo.ico" />
       <body
-        className={`antialiased`}
+        className={`antialiased ${googleSansFlex.className}`}
       >
+        <ThemeProvider>
           {children}
+        </ThemeProvider>
       </body>
     </html>
   );
