@@ -1,9 +1,18 @@
 export async function callAgentAPI({ prompt, userId, chatId, onTextChunk, onComplete, onError }) {
+    // Connect directly to the agent server to avoid Next.js body timeout limits
+    const agentUrl = typeof window !== "undefined" && window.electronAPI
+        ? "http://127.0.0.1:11435/v1/chat/completions"
+        : "/api/agent";
+
     try {
-        const response = await fetch("/api/agent", {
+        const response = await fetch(agentUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt, userId, chatId }),
+            body: JSON.stringify(
+                agentUrl.includes("11435")
+                    ? { model: "airi", stream: true, messages: [{ role: "user", content: prompt }] }
+                    : { prompt, userId, chatId }
+            ),
         });
 
         if (!response.ok) throw new Error(`API error: ${response.statusText}`);

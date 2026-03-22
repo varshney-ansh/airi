@@ -1,11 +1,20 @@
 import os
+import sys
 import json
 import time
+import asyncio
+import logging
 import subprocess
 import pyautogui
 import pyperclip
 import urllib.parse
 from playwright.sync_api import sync_playwright
+
+# Force UTF-8 output so browser_use emoji logs don't crash on Windows cp1252
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # Qwen Agent Framework
 from qwen_agent.agents import Assistant
@@ -14,8 +23,13 @@ from qwen_agent.tools.base import BaseTool, register_tool
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
+from browser_use import Agent as BrowserAgent
+from browser_use.browser.service import Browser
+from langchain_openai import ChatOpenAI
+
 import win
 
+logger = logging.getLogger(__name__)
 modelName = "ibm-granite/granite-4.0-1b"
 
 def _parse(params):
@@ -42,6 +56,14 @@ def _get(params, key):
 
 app = FastAPI()
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- 1. LLM CONFIGURATION (Optimized for Qwen3-VL-2B) ---
 llm_cfg = {
     "model": "default",
@@ -56,138 +78,100 @@ llm_cfg = {
     }
 }
 
-# --- 2. CONTROL TOOLS (Optimized Descriptions) ---
 
-@register_tool('run_cmd')
-class RunCmd(BaseTool):
-    description = "Execute shell command. Returns JSON: {stdout, stderr}. Use for file ops, system info."
+CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+CHROME_USER_DATA = r"C:\Users\anshv\AppData\Local\Google\Chrome\User Data Airi"
+
+class ChromeBrowser(Browser):
+    """Launches system Chrome with real user profile + stealth to avoid bot detection."""
+
+    async def _initialize_session(self):
+        from playwright.async_api import async_playwright
+        from playwright_stealth import stealth_async
+
+        playwright = await async_playwright().start()
+
+        # Use persistent context so Google sees real cookies/history
+        context = await playwright.chromium.launch_persistent_context(
+            user_data_dir=CHROME_USER_DATA,
+            executable_path=CHROME_PATH,
+            headless=False,
+            ignore_default_args=['--enable-automation'],
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--no-first-run',
+                '--no-default-browser-check',
+            ],
+            viewport={'width': 1280, 'height': 1024},
+            user_agent=(
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            ),
+        )
+
+        # Apply stealth to all existing and future pages
+        async def apply_stealth(page):
+            await stealth_async(page)
+
+        for page in context.pages:
+            await apply_stealth(page)
+        context.on("page", lambda page: asyncio.ensure_future(apply_stealth(page)))
+
+        page = context.pages[0] if context.pages else await context.new_page()
+
+        from browser_use.browser.views import BrowserState
+        from browser_use.browser.service import BrowserSession
+        initial_state = BrowserState(
+            items=[], selector_map={},
+            url=page.url, title=await page.title(),
+            screenshot=None, tabs=[],
+        )
+        self.session = BrowserSession(
+            playwright=playwright,
+            browser=context,   # persistent context acts as the browser
+            context=context,
+            current_page=page,
+            cached_state=initial_state,
+        )
+        return self.session
+
+# --- 2. Browser Use for browser Automation ---
+@register_tool('browser_automation')
+class BrowserAutomationTool(BaseTool):
+    description = 'Use this tool to perform complex browser tasks like clicking, typing, and navigating websites.'
     parameters = [{
-        'name': 'command', 
-        'type': 'string', 
-        'required': True,
-        'description': 'Shell command to execute (e.g., "dir", "echo hello")'
+        'name': 'task',
+        'type': 'string',
+        'description': 'The specific web automation task to perform (e.g., "Find the price of BTC on Coinbase")',
+        'required': True
     }]
 
     def call(self, params: str, **kwargs) -> str:
-        cmd = _get(params, 'command')
+        from browser_use.controller.service import Controller
+
+        params = _parse(params)
+        task = params['task'] if isinstance(params, dict) else params
+
         try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-            return json.dumps({"stdout": res.stdout, "stderr": res.stderr})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-@register_tool('take_screenshot')
-class TakeScreenshot(BaseTool):
-    description = "Capture full screen screenshot. Saves PNG to ./screenshots/. Returns file path."
-    parameters = []  # No params needed
-
-    def call(self, params: str, **kwargs) -> str:
-        try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            save_dir = os.path.join(script_dir, "screenshots")
-            os.makedirs(save_dir, exist_ok=True)
-            from datetime import datetime
-            filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            path = os.path.join(save_dir, filename)
-            pyautogui.screenshot().save(path)
-            return json.dumps({"path": path, "status": "success"})
-        except Exception as e:
-            return json.dumps({"error": str(e), "status": "failed"})
-
-@register_tool('mouse_control')
-class MouseControl(BaseTool):
-    description = "Control mouse: move/click at (x,y). Actions: move, click, double_click. Buttons: left, right, middle."
-    parameters = [
-        {'name': 'x', 'type': 'integer', 'required': True, 'description': 'X coordinate (0-1920)'},
-        {'name': 'y', 'type': 'integer', 'required': True, 'description': 'Y coordinate (0-1080)'},
-        {'name': 'action', 'type': 'string', 'required': True, 'enum': ['move', 'click', 'double_click']},
-        {'name': 'button', 'type': 'string', 'default': 'left', 'enum': ['left', 'right', 'middle']}
-    ]
-
-    def call(self, params: str, **kwargs) -> str:
-        p = _parse(params)
-        pyautogui.moveTo(p['x'], p['y'], duration=0.3)  # Smooth movement
-        if p['action'] == 'click':
-            pyautogui.click(button=p.get('button', 'left'))
-        elif p['action'] == 'double_click':
-            pyautogui.doubleClick(button=p.get('button', 'left'))
-        return json.dumps({"action": p['action'], "position": [p['x'], p['y']], "status": "done"})
-
-@register_tool('type_text')
-class TypeText(BaseTool):
-    description = "Type text into focused app. Uses clipboard paste for reliability with special chars."
-    parameters = [{'name': 'text', 'type': 'string', 'required': True, 'description': 'Text to type'}]
-
-    def call(self, params: str, **kwargs) -> str:
-        try:
-            txt = _get(params, 'text')
-            pyperclip.copy(txt)
-            pyautogui.hotkey('ctrl', 'v', interval=0.1)
-            return json.dumps({"text": txt[:50] + "..." if len(txt) > 50 else txt, "status": "typed"})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-@register_tool('clipboard_manager')
-class ClipboardManager(BaseTool):
-    description = "Read/write system clipboard. Mode: 'read' (returns text) or 'write' (needs text param)."
-    parameters = [
-        {'name': 'mode', 'type': 'string', 'required': True, 'enum': ['read', 'write']},
-        {'name': 'text', 'type': 'string', 'description': 'Text to copy (only for write mode)'}
-    ]
-
-    def call(self, params: str, **kwargs) -> str:
-        p = _parse(params)
-        if p['mode'] == 'write':
-            pyperclip.copy(p.get('text', ''))
-            return json.dumps({"mode": "write", "status": "copied"})
-        return json.dumps({"mode": "read", "content": pyperclip.paste()})
-
-# --- 3. BROWSER TOOLS (VL-Optimized) ---
-
-@register_tool('browser_search')
-class BrowserSearch(BaseTool):
-    description = "Search web & scrape top 3 results. Use DuckDuckGo HTML for reliability. Returns: query + [{title, snippet}]."
-    parameters = [{
-        'name': 'queries', 
-        'type': 'array', 
-        'items': {'type': 'string'}, 
-        'required': True,
-        'description': 'List of search queries (max 3)'
-    }]
-
-    def call(self, params: str, **kwargs) -> str:
-        parsed = _parse(params)
-        queries = parsed if isinstance(parsed, list) else parsed.get('queries', [])
-        queries = queries[:3]  # Limit for 2B model context
-        
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)  # Headless for speed
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
-                viewport={'width': 1280, 'height': 720}
+            browser = ChromeBrowser()
+            controller = Controller()
+            controller.browser = browser
+            llm = ChatOpenAI(
+                base_url="http://127.0.0.1:11434/v1",
+                model="default",
+                temperature=0.3,
             )
-            
-            results = []
-            for q in queries:
-                page = context.new_page()
-                encoded_q = urllib.parse.quote(q)
-                search_url = f"https://html.duckduckgo.com/html?q={encoded_q}"
-                
-                try:
-                    page.goto(search_url, wait_until="domcontentloaded", timeout=12000)
-                    content = page.evaluate("""() => {
-                        const items = document.querySelectorAll('.result__body');
-                        return Array.from(items).slice(0, 3).map(item => ({
-                            title: item.querySelector('.result__title')?.textContent?.trim() || '',
-                            snippet: item.querySelector('.result__snippet')?.textContent?.trim() || ''
-                        }));
-                    }""")
-                    results.append({"query": q, "results": content})
-                except Exception as e:
-                    results.append({"query": q, "error": str(e)})
-                page.close()
-            browser.close()
-            return json.dumps(results, ensure_ascii=False)
+            browser_sub_agent = BrowserAgent(
+                task=task,
+                llm=llm,
+                controller=controller,
+                use_vision=False,
+            )
+            result = asyncio.run(browser_sub_agent.run())
+            return str(result)
+        except Exception as e:
+            logger.error(f"[browser_automation] failed: {e}")
+            return json.dumps({"error": str(e)})
 
 # --- 4. WINDOWS APP CONTROL (Step-by-Step Workflow) ---
 ACTIVE_SESSIONS = {}
@@ -299,40 +283,69 @@ class StopAppSession(BaseTool):
         return json.dumps({"app_id": app_id, "status": "closed" if success else "failed", "message": message})
 
 
-SYSTEM_PROMPT = """You are Airi, a Windows desktop automation agent.
-RULES:
-- Call ONE tool at a time. Wait for the result before proceeding.
-- Never pass an app name where app_id is required.
-- Never assume UI elements exist — always inspect first.
-- For shell tasks, prefer run_cmd over GUI automation when possible.
+SYSTEM_PROMPT = """
+# IDENTITY
+You are Airi, a Windows Desktop AI Assistant. You specialize in app orchestration, web automation, and code execution.
 
-APP CONTROL WORKFLOW (follow in order):
-1. search_win_app_by_name(name) → get AppId
-2. start_app_session(app_id) → launch app
-3. inspect_ui_elements(app_id) → scan UI tree
-4. list_element_names(app_id) → see available elements
-5. get_element_details(app_id, element_name) → get coordinates
-6. mouse_control / type_text → interact
-7. stop_app_session(app_id) → always clean up when done
+# RULES
+1. ATOMICITY: Execute exactly ONE tool call per turn. Wait for output before proceeding.
+2. APP ID STRICTNESS: Never guess an `app_id`. Always `search_win_app_by_name` first.
+3. VISUAL VERIFICATION: Never click blindly. You MUST `inspect_ui_elements` -> `list_element_names` before interaction.
+4. TASK DELEGATION:
+   - Use `browser_automation` for ALL web tasks.
+   - Use `code_interpreter` for logic, math, and file operations.
+   - Use the 7-step Workflow ONLY for Windows Desktop apps.
 
-TOOL REFERENCE:
-- run_cmd(command) — run any shell command, returns {stdout, stderr}
-- take_screenshot() — capture screen, returns file path
-- mouse_control(x, y, action, button) — move/click/double_click at coordinates
-- type_text(text) — paste text into focused element
-- clipboard_manager(mode, text) — read or write clipboard
-- browser_search(queries) — search DuckDuckGo, returns top 3 results per query
-- search_win_app_by_name(name) — find installed app AppId by name
-- start_app_session(app_id) — launch a Windows app by full AppId
-- inspect_ui_elements(app_id) — capture and save the app's UI element tree
-- list_element_names(app_id) — list clickable element names in the open app
-- get_element_details(app_id, element_name) — get position and ID of a named element
-- stop_app_session(app_id) — close app and end session
+# WINDOWS APP WORKFLOW (STRICT SEQUENCE)
+1. search_win_app_by_name(name)
+2. start_app_session(app_id)
+3. inspect_ui_elements(app_id)
+4. list_element_names(app_id)
+5. get_element_details(app_id, element_name)
+6. [Interact via code_interpreter/pyautogui]
+7. stop_app_session(app_id)
 
-ERROR RECOVERY:
-- Element not found → call list_element_names to see what's available
-- App won't start → verify AppId includes the !App suffix
-- Search returns nothing → app may not be installed; try run_cmd to locate it
+# FEW-SHOT EXAMPLES
+
+## Example 1: Windows App Task (Sticky Notes)
+User: Write "Buy Milk" in Sticky Notes.
+Airi: search_win_app_by_name("sticky notes")
+Result: [{"app_id": "Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App"}]
+Airi: start_app_session("Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App")
+Result: {"status": "success"}
+Airi: inspect_ui_elements("Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App")
+Result: {"status": "UI_tree_captured"}
+Airi: list_element_names("Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App")
+Result: ["Note_Window", "Create_Note_Button"]
+Airi: get_element_details("Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App", "Note_Window")
+Result: {"x": 450, "y": 300}
+Airi: code_interpreter(code="pyautogui.click(450, 300); pyautogui.write('Buy Milk')")
+Result: {"status": "success"}
+Airi: stop_app_session("Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App")
+
+## Example 2: Web Task (Youtube)
+User: Go to Youtube.com and click on any video
+Airi: browser_automation(task="Go to Youtube.com and click on any video")
+
+## Example 3: Calculation/Data
+User: Calculate the 15% tax on a $1245 invoice and save to 'tax.txt'.
+Airi: code_interpreter(code="tax = 1245 * 0.15; with open('tax.txt', 'w') as f: f.write(str(tax))")
+
+# TOOL REFERENCE
+- search_win_app_by_name(name): Returns matching AppIds.
+- start_app_session(app_id): Starts session (requires !App suffix).
+- inspect_ui_elements(app_id): Saves UI tree to context/.
+- list_element_names(app_id): Lists interactable names from current tree.
+- get_element_details(app_id, element_name): Returns coordinates/ID for an element.
+- stop_app_session(app_id): Closes session. Mandatory.
+- browser_automation(task): English description of web tasks.
+- web_search(query) / web_fetch(url): Quick web lookup/reading.
+- code_interpreter: Execute Python for logic/automation.
+
+# ERROR RECOVERY
+- UI Stale: If an element is missing, re-run tool `inspect_ui_elements`.
+- Launch Fail: Re-verify `app_id` string via search.
+
 """
 
 # --- 6. AGENT INITIALIZATION ---
@@ -340,11 +353,10 @@ airi = Assistant(
     llm=llm_cfg,
     system_message=SYSTEM_PROMPT,
     function_list=[
-        'run_cmd', 'take_screenshot', 'mouse_control', 
-        'type_text', 'clipboard_manager', 'browser_search',
+        'browser_automation',
         'search_win_app_by_name', 'start_app_session',
         'inspect_ui_elements', 'list_element_names', 'get_element_details',
-        'stop_app_session'
+        'stop_app_session', 'web_search'
     ]
 )
 

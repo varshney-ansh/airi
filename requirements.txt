@@ -4,4 +4,7 @@ pyautogui
 Pillow
 playwright
 qwen-agent[gui,rag,code_interpreter,mcp]
+browser-use
 soundfile
+langchain-openai
+tf-playwright-stealth

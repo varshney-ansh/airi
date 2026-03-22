@@ -149,6 +149,7 @@ function startLlama() {
     llamaProcess = spawn("llama-server", [
         "-hf", "ibm-granite/granite-4.0-1b-GGUF:Q4_K_M",
         "--ctx-size", "32768",
+        "-np", "2",
         "--threads", "6",
         "--n-gpu-layers", "0",
         "--port", "11434",
@@ -162,7 +163,9 @@ function startLlama() {
 
 function startAgentServer() {
     const scriptPath = path.join(__dirname, '../agent-server', 'agent.py');
-    agentProcess = spawn("python", [scriptPath]);
+    agentProcess = spawn("python", [scriptPath], {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+    });
     agentProcess.on("error", (err) => console.error(`[Agent-Server FAILED TO START]`, err));
     agentProcess.stdout.on("data", (data) => console.log(`[Agent-Server] ${data}`));
     agentProcess.stderr.on("data", (data) => console.error(`[Agent-Server ERROR] ${data}`));

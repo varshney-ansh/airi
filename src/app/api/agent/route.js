@@ -1,3 +1,6 @@
+// 1 hour timeout — agent tasks can take a long time
+export const maxDuration = 3600;
+
 export async function POST(request) {
   try {
     const { prompt, userId, chatId } = await request.json();
@@ -9,6 +12,7 @@ export async function POST(request) {
       headers: {
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(3600_000),
       body: JSON.stringify({
         model: "airi",
         stream: true,
