@@ -1,5 +1,6 @@
 "use client";
 
+import { Add24Regular, ArrowUp24Regular } from "@fluentui/react-icons";
 import { useState, useRef, useEffect, useCallback } from "react";
 
 export default function ChatInput({ showgreet, handleOnSubmit, user_name }) {
@@ -105,7 +106,7 @@ export default function ChatInput({ showgreet, handleOnSubmit, user_name }) {
                             onClick={() => fileInputRef.current?.click()}
                             className="p-2 text-text-muted hover:bg-bg-hover rounded-full transition-colors"
                         >
-                            +
+                            <Add24Regular />
                         </button>
                     </div>
                     <button
@@ -117,7 +118,7 @@ export default function ChatInput({ showgreet, handleOnSubmit, user_name }) {
                                 : "bg-bg-hover text-text-muted"
                         }`}
                     >
-                        ↑
+                        <ArrowUp24Regular />
                     </button>
                 </div>
             </div>

@@ -1,7 +1,6 @@
 import "./globals.css";
 import "../../ui-components/index.css";
 import { Google_Sans_Flex } from "next/font/google";
-import { auth0 } from "@/lib/auth0";
 import { ThemeProvider } from "../../ui-components/hooks/useTheme";
 
 const googleSansFlex = Google_Sans_Flex({

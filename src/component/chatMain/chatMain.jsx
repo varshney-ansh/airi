@@ -1,29 +1,93 @@
 "use client"
 import ChatInput from "@/component/chatInput/chatInput";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { nanoid } from "nanoid";
 import { callAgentAPI } from "@/lib/agent-api";
+import { useChatContext } from "@/context/ChatContext";
 import { ArrowCircleUpRight24Regular } from "@fluentui/react-icons";
 
-const ChatMain = ({ userId, chatId = 'test', user_name }) => {
+function historyToMessages(chatHistory = []) {
+    return chatHistory.map((m, i) => ({
+        from: m.role === "user" ? "user" : "assistant",
+        key: `history-${i}`,
+        versions: [{ content: m.content, id: `history-id-${i}` }],
+    }));
+}
+
+function messagesToHistory(messages) {
+    return messages.map((m) => ({
+        role: m.from === "user" ? "user" : "assistant",
+        content: m.versions[0].content,
+    }));
+}
+
+const ChatMain = ({ userId, chatId: initialChatId, user_name }) => {
     const [messages, setMessages] = useState([]);
-    const [status, setStatus] = useState("ready");
     const [streamingMessageId, setStreamingMessageId] = useState(null);
     const [message, setMessage] = useState({ text: "" });
 
+    const chatIdRef = useRef(initialChatId || null);
     const accumulatorRef = useRef("");
+    const messagesRef = useRef([]);
+    const { addOrUpdateChat } = useChatContext();
+
+    // Keep messagesRef in sync so we can read latest messages outside of state
+    const setMessagesAndRef = useCallback((updater) => {
+        setMessages((prev) => {
+            const next = typeof updater === "function" ? updater(prev) : updater;
+            messagesRef.current = next;
+            return next;
+        });
+    }, []);
+
+    // Load history when opening an existing chat
+    useEffect(() => {
+        if (!initialChatId || typeof window === "undefined" || !window.electronAPI) return;
+        window.electronAPI.getChats(userId).then((chats) => {
+            const found = chats?.find((c) => c.chatId === initialChatId);
+            if (found?.chatHistory?.length) {
+                const msgs = historyToMessages(found.chatHistory);
+                messagesRef.current = msgs;
+                setMessages(msgs);
+            }
+        });
+    }, [initialChatId, userId]);
+
+    const chatTitleRef = useRef("New Chat");
+    const titleSetRef = useRef(!!initialChatId);
+
+    const saveChat = useCallback(async (updatedMessages) => {
+        const cid = chatIdRef.current;
+        if (!cid || !userId) return;
+
+        const chatData = {
+            chatId: cid,
+            userId,
+            chatTitle: chatTitleRef.current,
+            chatHistory: messagesToHistory(updatedMessages),
+            updatedAt: Date.now(),
+        };
+
+        addOrUpdateChat(chatData);
+
+        if (typeof window !== "undefined" && window.electronAPI) {
+            await window.electronAPI.saveChat(chatData);
+        }
+    }, [userId, addOrUpdateChat]);
 
     const streamResponse = useCallback(async (messageId, userPrompt) => {
-        setStatus("streaming");
         setStreamingMessageId(messageId);
         accumulatorRef.current = "";
 
         try {
             await callAgentAPI({
-                prompt: userPrompt, userId, chatId,
+                prompt: userPrompt,
+                userId,
+                chatId: chatIdRef.current,
                 onTextChunk: (chunk) => {
                     accumulatorRef.current += chunk;
                     const snapshot = accumulatorRef.current;
-                    setMessages((prev) =>
+                    setMessagesAndRef((prev) =>
                         prev.map((msg) =>
                             msg.versions[0].id === messageId
                                 ? { ...msg, versions: [{ ...msg.versions[0], content: snapshot }] }
@@ -31,34 +95,70 @@ const ChatMain = ({ userId, chatId = 'test', user_name }) => {
                         )
                     );
                 },
-                onComplete: () => { setStatus("ready"); setStreamingMessageId(null); },
-                onError: (error) => { console.error("API Error:", error); setStatus("ready"); setStreamingMessageId(null); },
+                onComplete: () => {
+                    setStreamingMessageId(null);
+                    saveChat(messagesRef.current);
+                },
+                onError: (error) => {
+                    console.error("API Error:", error);
+                    setStreamingMessageId(null);
+                },
             });
         } catch {
-            setStatus("ready");
             setStreamingMessageId(null);
         }
-    }, [userId, chatId]);
+    }, [userId, saveChat]);
 
     const handleOnSubmit = useCallback((inputData) => {
         const content = inputData.text?.trim();
         if (!content && (!inputData.files || inputData.files.length === 0)) return;
 
+        // Generate chatId on first message from / and update URL without remounting
+        if (!chatIdRef.current) {
+            const newId = nanoid();
+            chatIdRef.current = newId;
+            window.history.pushState(null, "", `/app/${newId}`);
+        }
+
+        const cid = chatIdRef.current;
+
         const userMessage = {
-            from: "user", key: `user-${Date.now()}`,
+            from: "user",
+            key: `user-${Date.now()}`,
             versions: [{ content: content || "Sent attachments", id: `user-idx-${Date.now()}` }],
         };
         const assistantMessageId = `assistant-${Date.now()}`;
         const assistantMessage = {
-            from: "assistant", key: `assistant-key-${Date.now()}`,
+            from: "assistant",
+            key: `assistant-key-${Date.now()}`,
             versions: [{ content: "", id: assistantMessageId }],
         };
-        setMessages((prev) => [...prev, userMessage, assistantMessage]);
+        setMessagesAndRef((prev) => [...prev, userMessage, assistantMessage]);
+
+        // Set title once on first submit only
+        if (!titleSetRef.current) {
+            titleSetRef.current = true;
+            const title = content.length < 3 ? "New Chat" : content.length > 60 ? content.slice(0, 57) + "..." : content;
+            chatTitleRef.current = title;
+            const initialChatData = {
+                chatId: cid,
+                userId,
+                chatTitle: title,
+                chatHistory: [{ role: "user", content }],
+                updatedAt: Date.now(),
+            };
+            addOrUpdateChat(initialChatData);
+            // Persist immediately so the new ChatProvider (after pushState navigation) loads it from electron-store
+            if (typeof window !== "undefined" && window.electronAPI) {
+                window.electronAPI.saveChat(initialChatData);
+            }
+        }
+
         streamResponse(assistantMessageId, content);
-    }, [streamResponse]);
+    }, [streamResponse, addOrUpdateChat, userId]);
 
     const handleOpenOverlay = () => {
-        if (typeof window !== 'undefined' && window.electronAPI) {
+        if (typeof window !== "undefined" && window.electronAPI) {
             window.electronAPI.openOverlay();
         }
     };
@@ -99,7 +199,7 @@ const ChatMain = ({ userId, chatId = 'test', user_name }) => {
                                                         <p key={i}>{line}</p>
                                                     ))}
                                                 </div>
-                                                {streamingMessageId !== msg.versions[0].id && (
+                                                {streamingMessageId !== msg.versions[0].id && msg.versions[0].content && (
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button className="p-1.5 cursor-pointer hover:bg-bg-hover rounded-lg text-text-muted transition-colors">
                                                             <svg viewBox="0 0 20 20" fill="currentColor" className="size-5"><path fillRule="evenodd" clipRule="evenodd" d="M10.7002 2.01074C11.0952 2.06005 11.4528 2.2785 11.6768 2.61426C12.2133 3.41901 12.5 4.36484 12.5 5.33203V5.95312C12.5 6.64737 12.3947 7.33709 12.1904 8H15.6914C16.9663 8 18 9.03369 18 10.3086C18 10.471 17.9832 10.6331 17.9492 10.792L16.7432 16.4189C16.5456 17.3411 15.7302 18 14.7871 18H9.11816C8.40698 18 7.70431 17.8549 7.05273 17.5752L7.04688 17.5723C6.7765 17.8363 6.40775 18 6 18H3.5C2.67157 18 2 17.3284 2 16.5V10.5C2 9.67157 2.67157 9 3.5 9H6C6.34648 9 6.665 9.11814 6.91895 9.31543L7.72559 8.34863C8.54907 7.36035 8.9999 6.11453 9 4.82812V3.47754C9 2.66177 9.66177 2 10.4775 2H10.5293L10.7002 2.01074Z"></path></svg>
@@ -119,7 +219,13 @@ const ChatMain = ({ userId, chatId = 'test', user_name }) => {
                 </div>
 
                 <div className="w-full pb-6 pt-2">
-                    <ChatInput user_name={user_name} showgreet={messages.length === 0} message={message} setMessage={setMessage} handleOnSubmit={handleOnSubmit} />
+                    <ChatInput
+                        user_name={user_name}
+                        showgreet={messages.length === 0}
+                        message={message}
+                        setMessage={setMessage}
+                        handleOnSubmit={handleOnSubmit}
+                    />
                 </div>
             </div>
         </main>

@@ -61,7 +61,7 @@ def open_win_app_and_start_session(AppId: str):
     options.app = AppId
     options.automation_name = "windows"
     options.platform_name = "windows"
-    options.set_capability("ms:waitForAppLaunch", "8")
+    # options.set_capability("ms:waitForAppLaunch", "8")
     options.set_capability("appium:newCommandTimeout", 3600)
 
     try: 
