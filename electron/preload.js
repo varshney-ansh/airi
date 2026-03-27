@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// 1. The new code: Expose the IPC bridge to your frontend
 contextBridge.exposeInMainWorld('electronAPI', {
+  isElectron: true,
   openOverlay: () => ipcRenderer.send('trigger-snap-overlay'),
   getChats:   (userId)         => ipcRenderer.invoke('get-chats', userId),
   pullChats:  (userId)         => ipcRenderer.invoke('pull-chats', userId),

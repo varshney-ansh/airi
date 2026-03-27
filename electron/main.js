@@ -7,6 +7,11 @@ const { nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const { MongoClient } = require('mongodb');
 
+// Required for Web Speech API (Google speech service) to work inside Electron
+app.commandLine.appendSwitch('enable-speech-dispatcher');
+app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http://localhost:3000');
+app.commandLine.appendSwitch('enable-features', 'WebSpeechAPI');
+
 let mainWindow = null;
 let llamaProcess = null;
 let embeddingProcess = null;
@@ -197,9 +202,23 @@ function createWindow() {
         height: 600,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            contextIsolation: true
+            contextIsolation: true,
+            nodeIntegration: false,
+            webSecurity: true,
         },
     });
+
+    // Grant microphone + speech recognition permission
+    mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+        const allowed = ['media', 'microphone', 'audioCapture', 'speech'];
+        callback(allowed.includes(permission));
+    });
+
+    mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+        const allowed = ['media', 'microphone', 'audioCapture', 'speech'];
+        return allowed.includes(permission);
+    });
+
     mainWindow.setMenuBarVisibility(false);
     mainWindow.setIcon(nativeImage.createFromPath(path.join(__dirname, '../public/logo.ico')), 'Airi');
     if (isDev) {

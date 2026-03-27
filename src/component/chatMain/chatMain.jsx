@@ -1,5 +1,6 @@
 "use client"
 import ChatInput from "@/component/chatInput/chatInput";
+import AgentLoader from "@/component/chatMain/AgentLoader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { callAgentAPI } from "@/lib/agent-api";
@@ -25,6 +26,7 @@ function messagesToHistory(messages) {
 const ChatMain = ({ userId, chatId: initialChatId, user_name }) => {
     const [messages, setMessages] = useState([]);
     const [streamingMessageId, setStreamingMessageId] = useState(null);
+    const [activeToolName, setActiveToolName] = useState(null); // current tool being called
 
     const chatIdRef = useRef(initialChatId || null);
     const accumulatorRef = useRef("");
@@ -106,16 +108,23 @@ const ChatMain = ({ userId, chatId: initialChatId, user_name }) => {
                         )
                     );
                 },
+                onToolCall: ({ tool, detail }) => {
+                    if (detail !== "done") setActiveToolName(tool);
+                    else setActiveToolName(null);
+                },
                 onComplete: () => {
+                    setActiveToolName(null);
                     setStreamingMessageId(null);
                     saveChat(messagesRef.current);
                 },
                 onError: (error) => {
                     console.error("API Error:", error);
+                    setActiveToolName(null);
                     setStreamingMessageId(null);
                 },
             });
         } catch {
+            setActiveToolName(null);
             setStreamingMessageId(null);
         }
     }, [userId, saveChat]);
@@ -211,6 +220,7 @@ const ChatMain = ({ userId, chatId: initialChatId, user_name }) => {
         }
     };
 
+    console.log(messages);
     return (
         <main className="flex-1 h-screen overflow-hidden relative py-1.5 px-1.5">
             <div className="bg-bg-modal h-[98vh] rounded-md border border-border-default flex flex-col relative">
@@ -249,11 +259,16 @@ const ChatMain = ({ userId, chatId: initialChatId, user_name }) => {
                                     <div className="flex flex-col items-start group">
                                         <div className="flex items-start gap-3 max-w-[90%]">
                                             <div className="space-y-4 pt-1">
-                                                <div className="text-text-primary leading-relaxed space-y-3">
-                                                    {msg.versions[0].content.split("\n").map((line, i) => (
-                                                        <p key={i}>{line}</p>
-                                                    ))}
-                                                </div>
+                                                {/* Show AgentLoader while streaming with no text yet, or while a tool is active */}
+                                                {streamingMessageId === msg.versions[0].id && (!msg.versions[0].content || activeToolName) ? (
+                                                    <AgentLoader toolName={activeToolName} />
+                                                ) : (
+                                                    <div className="text-text-primary leading-relaxed space-y-3">
+                                                        {msg.versions[0].content.split("\n").map((line, i) => (
+                                                            <p key={i}>{line}</p>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {streamingMessageId !== msg.versions[0].id && msg.versions[0].content && (
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button className="p-1.5 cursor-pointer hover:bg-bg-hover rounded-lg text-text-muted transition-colors">
