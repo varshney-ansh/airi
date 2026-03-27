@@ -10,3 +10,4 @@ langchain-openai
 tf-playwright-stealth
 mem0ai 
 qdrant-client
+faster-whisper

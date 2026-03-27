@@ -62,17 +62,38 @@ def _check_and_fix_mem0_db():
     try:
         with open(meta_path) as f:
             meta = json.load(f)
-        size = (meta.get("collections", {})
-                    .get("airi_memory", meta.get("collections", {}).get("mem0", {}))
-                    .get("vectors", {})
-                    .get("size"))
+        # Check both possible collection name keys
+        collections = meta.get("collections", {})
+        coll = collections.get("airi_memory") or collections.get("mem0") or {}
+        size = coll.get("vectors", {}).get("size")
         if size is not None and size != _EMBED_DIMS:
             logger.warning(f"[mem0] DB dim={size} != expected {_EMBED_DIMS}. Recreating DB.")
             shutil.rmtree(_MEM0_DB, ignore_errors=True)
+        else:
+            logger.info(f"[mem0] DB dims OK ({size})")
     except Exception as e:
         logger.warning(f"[mem0] Could not check DB dims: {e}")
 
 _check_and_fix_mem0_db()
+
+# ── Embedding server health check (before mem0 init) ─────────────────────────
+def _wait_for_embedding_server(max_retries=30, delay=0.5):
+    """Wait for the embedding server at 11445 to be ready."""
+    import time, requests
+    for _ in range(max_retries):
+        try:
+            resp = requests.get("http://127.0.0.1:11445/health", timeout=1)
+            if resp.status_code == 200:
+                logger.info("[mem0] Embedding server ready")
+                return True
+        except Exception:
+            pass
+        time.sleep(delay)
+    logger.warning("[mem0] Embedding server not ready, proceeding anyway")
+    return False
+
+# Wait for embedding server before initializing mem0
+_wait_for_embedding_server()
 
 # ── Mem0 Configuration (Fully Local) ─────────────────────────────────────────
 mem0_config = {
@@ -428,15 +449,16 @@ class ManageMemory(BaseTool):
     """Store or retrieve user facts for personalised assistance.
 
     mem0 1.0.7 API notes (verified):
-    - add()    : use run_id= for session scope (not session_id=)
-                 memory_type= only accepts "procedural_memory" or None — do NOT pass custom strings
+    - add()    : omit run_id for long-term memory (persists across sessions)
+                 use run_id=session_id for session-only memory
+                 infer=False stores raw text (no LLM extraction)
     - search() : native threshold= param; returns {"results": [...]}
-    - delete_all(): accepts user_id + run_id for session-scoped wipe
+    - delete_all(): user_id+run_id clears session; user_id only clears all
     """
-    description = 'Save or search user facts/preferences. action: save | search | delete_session'
+    description = 'Save or search user facts/preferences. action: save | search | delete_session | delete_all'
     parameters = [
         {'name': 'action',  'type': 'string', 'required': True,
-         'description': "save — store a fact; search — retrieve relevant facts; delete_session — clear session memories"},
+         'description': "save — store a fact (long-term); search — retrieve relevant facts; delete_session — clear session memories; delete_all — clear all user memories"},
         {'name': 'content', 'type': 'string',
          'description': 'Fact to save, or query to search for'},
     ]
@@ -453,11 +475,10 @@ class ManageMemory(BaseTool):
             if not content:
                 return json.dumps({"error": "content is required for save"})
             try:
-                # run_id= scopes to session; infer=False stores raw text (no LLM extraction)
+                # Long-term memory: omit run_id so facts persist across sessions
                 result = mem_client.add(
                     [{"role": "user", "content": content}],
                     user_id=user_id,
-                    run_id=session_id,
                     infer=False,
                 )
                 ids = [r.get("id") for r in result.get("results", [])]
@@ -486,7 +507,15 @@ class ManageMemory(BaseTool):
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
-        return json.dumps({"error": f"Unknown action '{action}'. Use: save, search, delete_session"})
+        elif action == 'delete_all':
+            try:
+                # Clear ALL user memories (long-term + session)
+                mem_client.delete_all(user_id=user_id)
+                return json.dumps({"deleted": True, "user_id": user_id})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        return json.dumps({"error": f"Unknown action '{action}'. Use: save, search, delete_session, delete_all"})
 
 
 # ── SYSTEM PROMPT ─────────────────────────────────────────────────────────────
@@ -571,16 +600,52 @@ async def chat_completions(request: Request):
     messages = _build_messages(raw_messages)
 
     def stream_gen():
+        import re as _re
         _current_user_id.set(user_id)
         _current_session_id.set(session_id)
 
-        prev_content = ""
-        chunk_id     = f"chatcmpl-{int(time.time())}"
+        prev_content  = ""
+        chunk_id      = f"chatcmpl-{int(time.time())}"
+        seen_tool_ids = set()
+
+        def _tool_event(tool_name: str, detail: str = "") -> str:
+            """Emit a custom SSE event so the frontend can show the AgentLoader status."""
+            payload = json.dumps({"tool": tool_name, "detail": detail}, ensure_ascii=False)
+            return f"event: tool_call\ndata: {payload}\n\n"
 
         try:
             for response in airi.run(messages):
                 if not response:
                     continue
+
+                # ── Detect tool calls / tool results in this response snapshot ──
+                for m in response:
+                    role = m.get("role", "")
+
+                    # assistant message that contains a function_call
+                    if role == "assistant":
+                        content = m.get("content") or ""
+                        # Qwen-agent stores tool calls as list items with type "function"
+                        if isinstance(content, list):
+                            for item in content:
+                                if not isinstance(item, dict):
+                                    continue
+                                fn = item.get("function") or item.get("name") or ""
+                                call_id = item.get("id") or item.get("call_id") or fn
+                                if fn and call_id not in seen_tool_ids:
+                                    seen_tool_ids.add(call_id)
+                                    yield _tool_event(fn)
+
+                    # tool result message — the tool already ran
+                    elif role == "tool":
+                        tool_name = m.get("name") or m.get("tool_call_id") or "tool"
+                        call_id   = m.get("tool_call_id") or tool_name
+                        result_id = f"result_{call_id}"
+                        if result_id not in seen_tool_ids:
+                            seen_tool_ids.add(result_id)
+                            yield _tool_event(tool_name, "done")
+
+                # ── Stream assistant text delta ────────────────────────────────
                 assistant_msgs = [m for m in response if m.get("role") == "assistant"]
                 if not assistant_msgs:
                     continue
@@ -595,10 +660,9 @@ async def chat_completions(request: Request):
                 else:
                     full_content = str(raw)
 
-                # Strip <think>...</think> blocks from streamed output
+                # Strip <think>...</think> blocks
                 if "<think>" in full_content:
-                    import re
-                    full_content = re.sub(r"<think>.*?</think>", "", full_content, flags=re.DOTALL).strip()
+                    full_content = _re.sub(r"<think>.*?</think>", "", full_content, flags=_re.DOTALL).strip()
 
                 delta = full_content[len(prev_content):]
                 prev_content = full_content
@@ -647,6 +711,171 @@ async def upload_files(files: list[UploadFile] = File(...)):
         saved.append(dest)
         logger.info(f"[upload] Saved: {dest}")
     return {"paths": saved, "count": len(saved)}
+
+
+_whisper_model = None
+
+def _get_whisper():
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        from huggingface_hub import try_to_load_from_cache
+        # Check if model is already in local cache
+        cached = try_to_load_from_cache("Systran/faster-whisper-tiny", "model.bin")
+        is_cached = cached is not None and not isinstance(cached, type(None))
+        if is_cached:
+            # Fully offline — no network calls at all
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", local_files_only=True)
+            logger.info("[whisper] Loaded from local cache (offline)")
+        else:
+            logger.info("[whisper] First run — downloading tiny model (~75MB)...")
+            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+            logger.info("[whisper] Model downloaded and cached")
+    return _whisper_model
+
+def _prewarm_whisper():
+    """Load whisper in background at startup so first transcribe call is instant."""
+    import threading
+    def _load():
+        try:
+            _get_whisper()
+        except Exception as e:
+            logger.warning(f"[whisper] Pre-warm failed: {e}")
+    threading.Thread(target=_load, daemon=True).start()
+
+_prewarm_whisper()
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Transcribe a single audio blob (fallback for non-streaming use)."""
+    import tempfile
+    try:
+        suffix = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+        model = _get_whisper()
+        segments, _ = model.transcribe(tmp_path, language="en", beam_size=1, vad_filter=True)
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        os.unlink(tmp_path)
+        return {"text": text}
+    except Exception as e:
+        logger.error(f"[transcribe] {e}")
+        return {"text": "", "error": str(e)}
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+import wave, struct, io, threading, queue
+
+@app.websocket("/ws/transcribe")
+async def ws_transcribe(websocket: WebSocket):
+    """
+    Real-time transcription over WebSocket.
+    Client sends raw PCM16 mono 16kHz audio chunks as binary frames.
+    Server responds with JSON: {"type": "interim"|"final", "text": "..."}
+    Client sends text frame "stop" to end the session.
+    """
+    await websocket.accept()
+    logger.info("[ws_transcribe] Client connected")
+
+    model = _get_whisper()
+    audio_queue: queue.Queue = queue.Queue()
+    result_queue: queue.Queue = queue.Queue()
+    running = True
+
+    SAMPLE_RATE   = 16000
+    CHANNELS      = 1
+    SAMPLE_WIDTH  = 2          # int16
+    # Accumulate ~1.2s of audio before transcribing (balance latency vs accuracy)
+    CHUNK_SAMPLES = int(SAMPLE_RATE * 1.2)
+
+    def transcribe_worker():
+        """Background thread: drains audio_queue, transcribes, pushes results."""
+        buf = b""
+        while running:
+            try:
+                chunk = audio_queue.get(timeout=0.3)
+                if chunk is None:
+                    break
+                buf += chunk
+                # Transcribe when we have enough samples
+                if len(buf) >= CHUNK_SAMPLES * SAMPLE_WIDTH:
+                    pcm = buf
+                    buf = b""
+                    try:
+                        # Wrap PCM in a WAV container so faster-whisper can read it
+                        wav_io = io.BytesIO()
+                        with wave.open(wav_io, "wb") as wf:
+                            wf.setnchannels(CHANNELS)
+                            wf.setsampwidth(SAMPLE_WIDTH)
+                            wf.setframerate(SAMPLE_RATE)
+                            wf.writeframes(pcm)
+                        wav_io.seek(0)
+                        segments, _ = model.transcribe(
+                            wav_io, language="en", beam_size=1,
+                            vad_filter=True, vad_parameters={"min_silence_duration_ms": 300}
+                        )
+                        text = " ".join(s.text.strip() for s in segments).strip()
+                        if text:
+                            result_queue.put({"type": "interim", "text": text})
+                    except Exception as e:
+                        logger.error(f"[ws_transcribe] transcribe error: {e}")
+            except queue.Empty:
+                # Flush remaining buffer if it has meaningful audio
+                if len(buf) > SAMPLE_RATE * SAMPLE_WIDTH * 0.3:
+                    pcm = buf
+                    buf = b""
+                    try:
+                        wav_io = io.BytesIO()
+                        with wave.open(wav_io, "wb") as wf:
+                            wf.setnchannels(CHANNELS)
+                            wf.setsampwidth(SAMPLE_WIDTH)
+                            wf.setframerate(SAMPLE_RATE)
+                            wf.writeframes(pcm)
+                        wav_io.seek(0)
+                        segments, _ = model.transcribe(
+                            wav_io, language="en", beam_size=1,
+                            vad_filter=True, vad_parameters={"min_silence_duration_ms": 300}
+                        )
+                        text = " ".join(s.text.strip() for s in segments).strip()
+                        if text:
+                            result_queue.put({"type": "final", "text": text})
+                    except Exception as e:
+                        logger.error(f"[ws_transcribe] flush error: {e}")
+
+    worker = threading.Thread(target=transcribe_worker, daemon=True)
+    worker.start()
+
+    async def send_results():
+        while True:
+            await asyncio.sleep(0.05)
+            while not result_queue.empty():
+                msg = result_queue.get_nowait()
+                try:
+                    await websocket.send_json(msg)
+                except Exception:
+                    return
+
+    send_task = asyncio.create_task(send_results())
+
+    try:
+        while True:
+            msg = await websocket.receive()
+            if msg["type"] == "websocket.disconnect":
+                break
+            if "bytes" in msg and msg["bytes"]:
+                audio_queue.put(msg["bytes"])
+            elif "text" in msg and msg["text"] == "stop":
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        running = False
+        audio_queue.put(None)
+        send_task.cancel()
+        worker.join(timeout=2)
+        logger.info("[ws_transcribe] Client disconnected")
 
 
 @app.get("/health")
