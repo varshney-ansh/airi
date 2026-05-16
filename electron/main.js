@@ -16,7 +16,6 @@ let mainWindow = null;
 let llamaProcess = null;
 let embeddingProcess = null;
 let agentProcess = null;
-let appiumProcess = null;
 let atlasCollection = null;
 let store = null;
 
@@ -164,8 +163,29 @@ function startEmbeddingServer() {
 }
 
 function startLlama() {
+    // Read settings to check if an external API is configured
+    const settingsPath = path.join(__dirname, '../agent-server/settings.json');
+    let modelServer = 'http://127.0.0.1:11434/v1';
+    let modelName   = 'Qwen/Qwen3-VL-2B-Instruct-GGUF';
+    try {
+        if (require('fs').existsSync(settingsPath)) {
+            const s = JSON.parse(require('fs').readFileSync(settingsPath, 'utf8'));
+            if (s.model_server) modelServer = s.model_server;
+            if (s.model)        modelName   = s.model;
+        }
+    } catch (e) {
+        console.warn('[main] Could not read settings.json:', e.message);
+    }
+
+    // Skip llama-server if pointing to an external API
+    const isExternal = !modelServer.includes('127.0.0.1') && !modelServer.includes('localhost');
+    if (isExternal) {
+        console.log(`[main] External API configured (${modelServer}) — skipping llama-server`);
+        return;
+    }
+
     llamaProcess = spawn("llama-server", [
-        "-hf", "Qwen/Qwen3-VL-2B-Instruct-GGUF",
+        "-hf", modelName,
         "--ctx-size", "32768",
         "-np", "2",
         "--threads", "6",
@@ -187,13 +207,6 @@ function startAgentServer() {
     agentProcess.on("error", (err) => console.error(`[Agent-Server FAILED TO START]`, err));
     agentProcess.stdout.on("data", (data) => console.log(`[Agent-Server] ${data}`));
     agentProcess.stderr.on("data", (data) => console.error(`[Agent-Server ERROR] ${data}`));
-}
-
-function startAppium() {
-    appiumProcess = spawn("appium", ["--use-plugins", "ocr"], { shell: true });
-    appiumProcess.on("error", (err) => console.error(`[Appium FAILED TO START]`, err));
-    appiumProcess.stdout.on("data", (data) => console.log(`[Appium] ${data}`));
-    appiumProcess.stderr.on("data", (data) => console.error(`[Appium ERROR] ${data}`));
 }
 
 function createWindow() {
